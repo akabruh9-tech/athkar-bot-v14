@@ -308,7 +308,12 @@ async function handleMusicMessage(message) {
 
       await distube.play(voiceChannel, query, {
         textChannel: message.channel,
-        member: message.member
+        member: message.member,
+        message,
+        skip: false
+      }).catch((error) => {
+        console.error('Play Error:', error);
+        throw error;
       });
       return;
     }

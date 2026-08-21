@@ -301,28 +301,9 @@ function isDirectUrl(query) {
   }
 }
 
-function isSoundCloudUrl(query) {
-  try {
-    const hostname = new URL(query).hostname.toLowerCase();
-    return hostname === 'soundcloud.com' || hostname.endsWith('.soundcloud.com');
-  } catch {
-    return false;
-  }
-}
-
-async function resolveSoundCloudQuery(query) {
-  if (isDirectUrl(query)) {
-    if (!isSoundCloudUrl(query)) {
-      throw new Error('Only SoundCloud URLs and SoundCloud searches are supported.');
-    }
-    return query;
-  }
-
-  const results = await soundcloudPlugin.search(query, 'track', 1);
-  if (!results.length || !results[0]?.url) {
-    throw new Error(`No SoundCloud result found for: ${query}`);
-  }
-  return results[0].url;
+async function resolveMusicQuery(query) {
+  if (isDirectUrl(query)) return query;
+  return query;
 }
 
 async function handleMusicMessage(message) {
@@ -351,8 +332,8 @@ async function handleMusicMessage(message) {
       }
       const voiceChannel = message.member.voice.channel;
 
-  const soundCloudSource = await resolveSoundCloudQuery(query);
-  await distube.play(voiceChannel, soundCloudSource, {
+      const musicSource = await resolveMusicQuery(query);
+      await distube.play(voiceChannel, musicSource, {
         textChannel: message.channel,
         member: message.member,
         message,

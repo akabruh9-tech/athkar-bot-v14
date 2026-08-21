@@ -28,6 +28,7 @@ const {
 } = require('discord.js');
 const { DisTube } = require('distube');
 const { YouTubePlugin } = require('@distube/youtube');
+const { YtDlpPlugin } = require('@distube/yt-dlp');
 
 const VOICE_CHANNEL_ID = '1537366844149727313';
 
@@ -136,7 +137,7 @@ const client = new Client({
 
 const distube = new DisTube(client, {
   ffmpeg: { path: ffmpegPath },
-  plugins: [new YouTubePlugin()]
+  plugins: [new YouTubePlugin(), new YtDlpPlugin({ update: true })]
 });
 
 async function registerCommands() {
@@ -179,6 +180,31 @@ async function joinMusicVoiceChannel() {
   }
 }
 
+function formatDuration(seconds) {
+  const totalSeconds = Number(seconds);
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return 'غير معروف';
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = Math.floor(totalSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${remainingSeconds}`;
+}
+
+function buildMusicEmbed(title, description, color = 0x2ecc71) {
+  return new EmbedBuilder()
+    .setColor(color)
+    .setTitle(`✦ JONT Music • ${title} ✦`)
+    .setDescription(description)
+    .setFooter({ text: 'JONT Music • Non-Prefix Controls' })
+    .setTimestamp();
+}
+
+async function sendMusicEmbed(queue, embed) {
+  if (!queue?.textChannel?.isTextBased()) return;
+  await queue.textChannel.send({ embeds: [embed] }).catch((error) => {
+    console.error('Could not send music embed:', error.message);
+  });
+}
+
 async function handleMusicMessage(message) {
   if (!message.guild || message.author.bot) return;
 
@@ -191,13 +217,17 @@ async function handleMusicMessage(message) {
   try {
     if (['p', 'play', 'ش', 'شغل'].includes(normalizedCommand) || ['ش', 'شغل'].includes(command)) {
       if (!argument) {
-        await message.reply('استخدم `p <اسم الأغنية أو الرابط>`.');
+        await message.reply({
+          embeds: [buildMusicEmbed('طريقة التشغيل', 'استخدم `p <اسم الأغنية أو الرابط>`.', 0xf1c40f)]
+        });
         return;
       }
 
       const voiceChannel = message.member?.voice?.channel;
       if (!voiceChannel?.isVoiceBased()) {
-        await message.reply('يجب أن تكون داخل روم صوتي لتشغيل الموسيقى.');
+        await message.reply({
+          embeds: [buildMusicEmbed('الروم الصوتي مطلوب', 'انضم إلى روم صوتي ثم أرسل أمر التشغيل مرة أخرى.', 0xe67e22)]
+        });
         return;
       }
 
@@ -211,35 +241,49 @@ async function handleMusicMessage(message) {
     const queue = distube.getQueue(message.guildId);
     if (normalizedCommand === 's' || normalizedCommand === 'skip' || command === 'س') {
       if (!queue) {
-        await message.reply('لا توجد أغنية قيد التشغيل حاليًا.');
+        await message.reply({
+          embeds: [buildMusicEmbed('لا توجد أغنية', 'لا توجد أغنية قيد التشغيل حاليًا.', 0xe67e22)]
+        });
         return;
       }
       await queue.skip();
-      await message.reply('تم تخطي الأغنية.');
+      await message.reply({
+        embeds: [buildMusicEmbed('تم التخطي', 'انتقل البوت إلى المقطع التالي.', 0x3498db)]
+      });
       return;
     }
 
     if (normalizedCommand === 'stop' || command === 'وقف' || command === 'ايقاف') {
       if (!queue) {
-        await message.reply('لا توجد أغنية قيد التشغيل حاليًا.');
+        await message.reply({
+          embeds: [buildMusicEmbed('لا توجد أغنية', 'لا توجد أغنية قيد التشغيل حاليًا.', 0xe67e22)]
+        });
         return;
       }
       await queue.stop();
-      await message.reply('تم إيقاف الموسيقى مع البقاء في الروم الصوتي.');
+      await message.reply({
+        embeds: [buildMusicEmbed('تم الإيقاف', 'توقفت الموسيقى وسيبقى البوت في الروم الصوتي.', 0xe74c3c)]
+      });
       return;
     }
 
     if (normalizedCommand === 'pause') {
       if (!queue) {
-        await message.reply('لا توجد أغنية قيد التشغيل حاليًا.');
+        await message.reply({
+          embeds: [buildMusicEmbed('لا توجد أغنية', 'لا توجد أغنية قيد التشغيل حاليًا.', 0xe67e22)]
+        });
         return;
       }
       if (queue.paused) {
         await queue.resume();
-        await message.reply('تم استئناف الموسيقى.');
+        await message.reply({
+          embeds: [buildMusicEmbed('تم الاستئناف', 'عادت الموسيقى إلى التشغيل.', 0x2ecc71)]
+        });
       } else {
         await queue.pause();
-        await message.reply('تم إيقاف الموسيقى مؤقتًا.');
+        await message.reply({
+          embeds: [buildMusicEmbed('تم الإيقاف المؤقت', 'أوقفت الموسيقى مؤقتًا.', 0xf1c40f)]
+        });
       }
       return;
     }
@@ -247,17 +291,46 @@ async function handleMusicMessage(message) {
     if (normalizedCommand === 'seek' || command === 'قدم' || command === 'ق') {
       const seconds = Number(argument);
       if (!queue || !argument || !Number.isFinite(seconds) || seconds < 0) {
-        await message.reply('استخدم `seek <seconds>` بقيمة موجبة أثناء تشغيل أغنية.');
+        await message.reply({
+          embeds: [buildMusicEmbed('صيغة التقديم', 'استخدم `seek <seconds>` أثناء تشغيل أغنية.', 0xf1c40f)]
+        });
         return;
       }
       await queue.seek(seconds);
-      await message.reply(`تم التقديم إلى ${seconds} ثانية.`);
+      await message.reply({
+        embeds: [buildMusicEmbed('تم التقديم', `تم الانتقال إلى **${formatDuration(seconds)}**.`, 0x9b59b6)]
+      });
     }
   } catch (error) {
     console.error('Music command failed:', error.message);
-    await message.reply('تعذر تنفيذ أمر الموسيقى حاليًا.').catch(() => null);
+    await message.reply({
+      embeds: [buildMusicEmbed('تعذر التشغيل', 'حدث خطأ عابر أثناء تنفيذ أمر الموسيقى.', 0xe74c3c)]
+    }).catch(() => null);
   }
 }
+
+distube.on('playSong', async (queue, song) => {
+  const nextSong = queue.songs[1];
+  const songLink = song.url ? `[فتح الرابط](${song.url})` : 'رابط غير متوفر';
+  const nextTitle = nextSong ? `**${nextSong.name}**` : 'لا يوجد مقطع تالٍ حاليًا';
+  const thumbnail = song.thumbnail || null;
+  const musicEmbed = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setTitle('✦ JONT Music • تشغيل الآن ✦')
+    .setDescription(`**${song.name}**\n${songLink}`)
+    .addFields(
+      { name: 'المدة', value: `**${song.formattedDuration || formatDuration(song.duration)}**`, inline: true },
+      { name: 'المقطع التالي', value: nextTitle, inline: true }
+    )
+    .setFooter({ text: 'JONT Music • التشغيل المباشر' })
+    .setTimestamp();
+  if (thumbnail) musicEmbed.setThumbnail(thumbnail);
+
+  await sendMusicEmbed(
+    queue,
+    musicEmbed
+  );
+});
 
 distube.on('error', (error, queue) => {
   console.error(`DisTube error${queue?.guild?.id ? ` in ${queue.guild.id}` : ''}:`, error.message);

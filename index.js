@@ -300,13 +300,11 @@ async function handleMusicMessage(message) {
         return;
       }
 
-      const voiceChannel = message.member?.voice?.channel;
-      if (!voiceChannel?.isVoiceBased()) {
-        await message.reply({
-          embeds: [buildMusicEmbed('الروم الصوتي مطلوب', 'انضم إلى روم صوتي ثم أرسل أمر التشغيل مرة أخرى.', PURPLE)]
-        });
+      if (!message.member?.voice?.channel) {
+        await message.reply('يرجى دخول قناة صوتية أولاً!');
         return;
       }
+      const voiceChannel = message.member.voice.channel;
 
       await distube.play(voiceChannel, query, {
         textChannel: message.channel,
@@ -379,7 +377,7 @@ async function handleMusicMessage(message) {
       });
     }
   } catch (error) {
-    console.error('Music command failed:', error.message);
+    console.error('Music command failed:', error);
     await message.reply({
       embeds: [buildMusicEmbed('تعذر التشغيل', 'حدث خطأ عابر أثناء تنفيذ أمر الموسيقى.', 0xe74c3c)]
     }).catch(() => null);
@@ -394,8 +392,19 @@ distube.on('playSong', async (queue, song) => {
   );
 });
 
-distube.on('error', (error, queue) => {
-  console.error(`DisTube error${queue?.guild?.id ? ` in ${queue.guild.id}` : ''}:`, error.message);
+distube.on('error', async (error, queue, song) => {
+  console.error(`DisTube error${queue?.guild?.id ? ` in ${queue.guild.id}` : ''}:`, error);
+  console.error('DisTube error details:', {
+    message: error.message,
+    stack: error.stack,
+    song: song?.name || song?.url || 'unknown'
+  });
+
+  if (queue?.textChannel?.isTextBased()) {
+    await queue.textChannel.send(`❌ حدث خطأ في تشغيل المقطع: ${error.message}`).catch((sendError) => {
+      console.error('Could not report DisTube error in Discord:', sendError);
+    });
+  }
 });
 
 client.once('clientReady', (readyClient) => {

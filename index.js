@@ -1,3 +1,15 @@
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Bot is active and running 24/7!');
+});
+
+app.listen(PORT, () => {
+  console.log(`Web server running on port ${PORT}`);
+});
+
 require('dotenv').config({ override: true });
 
 const fs = require('node:fs');

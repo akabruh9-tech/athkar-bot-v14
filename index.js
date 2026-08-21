@@ -3,7 +3,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-  res.send('Bot is active and running 24/7!');
+  res.send('Bot is alive!');
 });
 
 app.listen(PORT, () => {
@@ -11,6 +11,19 @@ app.listen(PORT, () => {
 });
 
 require('dotenv').config({ override: true });
+
+const renderExternalUrl = process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, '');
+if (renderExternalUrl) {
+  setInterval(() => {
+    fetch(renderExternalUrl)
+      .then((response) => {
+        console.log(`Render keep-alive ping: HTTP ${response.status}`);
+      })
+      .catch((error) => {
+        console.error('Render keep-alive ping failed:', error.message);
+      });
+  }, 5 * 60 * 1000);
+}
 
 const fs = require('node:fs');
 const http = require('node:http');

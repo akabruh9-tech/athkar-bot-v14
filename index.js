@@ -1,6 +1,7 @@
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
+const ffmpegPath = require('ffmpeg-static');
 
 app.get('/', (req, res) => {
   res.send('Bot is active and running 24/7!');
@@ -25,6 +26,10 @@ const {
   Routes,
   SlashCommandBuilder
 } = require('discord.js');
+const { DisTube } = require('distube');
+const { YouTubePlugin } = require('@distube/youtube');
+
+const VOICE_CHANNEL_ID = '1537366844149727313';
 
 let currentInterval = 2 * 60 * 1000;
 let automaticAzkarInterval;
@@ -120,7 +125,19 @@ const commands = [
     .setDMPermission(false)
 ].map((command) => command.toJSON());
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.MessageContent
+  ]
+});
+
+const distube = new DisTube(client, {
+  ffmpeg: { path: ffmpegPath },
+  plugins: [new YouTubePlugin()]
+});
 
 async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(discordToken);
@@ -133,22 +150,131 @@ function resetAutomaticAzkarInterval() {
 }
 
 async function sendAutomaticAzkar() {
-  const { channelId } = loadConfig();
-  if (!channelId) return;
+  try {
+    const { channelId } = loadConfig();
+    if (!channelId) return;
 
-  const channel = await client.channels.fetch(channelId).catch(() => null);
-  if (!channel || channel.type !== ChannelType.GuildText) return;
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (!channel || channel.type !== ChannelType.GuildText) return;
 
-  const zikr = getRandomZikr();
-  await channel.send({ embeds: [buildAzkarEmbed(zikr, 'random')] }).catch((error) => {
+    const zikr = getRandomZikr();
+    await channel.send({ embeds: [buildAzkarEmbed(zikr, 'random')] });
+  } catch (error) {
     console.error('Could not send automatic Azkar:', error.message);
-  });
+  }
 }
+
+async function joinMusicVoiceChannel() {
+  try {
+    const channel = await client.channels.fetch(VOICE_CHANNEL_ID);
+    if (!channel?.isVoiceBased()) {
+      console.error(`Configured voice channel is not voice-based: ${VOICE_CHANNEL_ID}`);
+      return;
+    }
+
+    await distube.voices.join(channel);
+    console.log(`Joined music voice channel: ${channel.name}`);
+  } catch (error) {
+    console.error('Could not join music voice channel:', error.message);
+  }
+}
+
+async function handleMusicMessage(message) {
+  if (!message.guild || message.author.bot) return;
+
+  const [command, ...argumentParts] = message.content.trim().split(/\s+/);
+  const normalizedCommand = command?.toLowerCase();
+  const argument = argumentParts.join(' ').trim();
+  const musicCommands = ['p', 'play', 's', 'skip', 'stop', 'pause', 'seek', 'س', 'وقف', 'ايقاف', 'قدم', 'ق'];
+  if (!musicCommands.includes(normalizedCommand) && !musicCommands.includes(command)) return;
+
+  try {
+    if (normalizedCommand === 'p' || normalizedCommand === 'play') {
+      if (!argument) {
+        await message.reply('استخدم `p <اسم الأغنية أو الرابط>`.');
+        return;
+      }
+
+      const voiceChannel = await client.channels.fetch(VOICE_CHANNEL_ID).catch(() => null);
+      if (!voiceChannel?.isVoiceBased() || voiceChannel.guildId !== message.guildId) {
+        await message.reply('قناة الموسيقى المحددة غير متاحة لهذا السيرفر.');
+        return;
+      }
+
+      await distube.play(voiceChannel, argument, {
+        textChannel: message.channel,
+        member: message.member
+      });
+      return;
+    }
+
+    const queue = distube.getQueue(message.guildId);
+    if (normalizedCommand === 's' || normalizedCommand === 'skip' || command === 'س') {
+      if (!queue) {
+        await message.reply('لا توجد أغنية قيد التشغيل حاليًا.');
+        return;
+      }
+      await queue.skip();
+      await message.reply('تم تخطي الأغنية.');
+      return;
+    }
+
+    if (normalizedCommand === 'stop' || command === 'وقف' || command === 'ايقاف') {
+      if (!queue) {
+        await message.reply('لا توجد أغنية قيد التشغيل حاليًا.');
+        return;
+      }
+      await queue.stop();
+      await message.reply('تم إيقاف الموسيقى مع البقاء في الروم الصوتي.');
+      return;
+    }
+
+    if (normalizedCommand === 'pause') {
+      if (!queue) {
+        await message.reply('لا توجد أغنية قيد التشغيل حاليًا.');
+        return;
+      }
+      if (queue.paused) {
+        await queue.resume();
+        await message.reply('تم استئناف الموسيقى.');
+      } else {
+        await queue.pause();
+        await message.reply('تم إيقاف الموسيقى مؤقتًا.');
+      }
+      return;
+    }
+
+    if (normalizedCommand === 'seek' || command === 'قدم' || command === 'ق') {
+      const seconds = Number(argument);
+      if (!queue || !argument || !Number.isFinite(seconds) || seconds < 0) {
+        await message.reply('استخدم `seek <seconds>` بقيمة موجبة أثناء تشغيل أغنية.');
+        return;
+      }
+      await queue.seek(seconds);
+      await message.reply(`تم التقديم إلى ${seconds} ثانية.`);
+    }
+  } catch (error) {
+    console.error('Music command failed:', error.message);
+    await message.reply('تعذر تنفيذ أمر الموسيقى حاليًا.').catch(() => null);
+  }
+}
+
+distube.on('error', (error, queue) => {
+  console.error(`DisTube error${queue?.guild?.id ? ` in ${queue.guild.id}` : ''}:`, error.message);
+});
 
 client.once('clientReady', (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
   client.user.setActivity('JONT / Athkar', { type: 3 });
   resetAutomaticAzkarInterval();
+  joinMusicVoiceChannel();
+});
+
+client.on('messageCreate', handleMusicMessage);
+
+client.on('voiceStateUpdate', (oldState, newState) => {
+  if (oldState.id !== client.user?.id || newState.channelId === VOICE_CHANNEL_ID) return;
+  joinMusicVoiceChannel();
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -225,3 +351,7 @@ registerCommands()
     }
     process.exit(1);
   });
+
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled promise rejection:', error);
+});

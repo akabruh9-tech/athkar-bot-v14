@@ -31,6 +31,7 @@ const {
   StringSelectMenuBuilder
 } = require('discord.js');
 const { DisTube } = require('distube');
+const { YouTubePlugin } = require('@distube/youtube');
 const { YtDlpPlugin } = require('@distube/yt-dlp');
 
 const CHANNEL_ID = "1540170401777455176";
@@ -147,7 +148,7 @@ const distube = new DisTube(client, {
     soft: 'lowpass=f=12000,acompressor=threshold=-24dB:ratio=1.5',
     treblebass: 'equalizer=f=100:t=q:w=1:g=5,equalizer=f=8000:t=q:w=1:g=4'
   },
-  plugins: [new YtDlpPlugin()]
+  plugins: [new YouTubePlugin(), new YtDlpPlugin()]
 });
 
 async function registerCommands() {

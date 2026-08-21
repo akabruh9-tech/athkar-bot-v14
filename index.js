@@ -27,7 +27,6 @@ const {
   SlashCommandBuilder
 } = require('discord.js');
 const { DisTube } = require('distube');
-const { YouTubePlugin } = require('@distube/youtube');
 const { YtDlpPlugin } = require('@distube/yt-dlp');
 
 const CHANNEL_ID = "1540170401777455176";
@@ -139,7 +138,7 @@ const distube = new DisTube(client, {
   ffmpeg: { path: ffmpegPath },
   leaveOnEmpty: false,
   leaveOnFinish: false,
-  plugins: [new YouTubePlugin(), new YtDlpPlugin({ update: true })]
+  plugins: [new YtDlpPlugin()]
 });
 
 async function registerCommands() {
@@ -229,8 +228,7 @@ async function handleMusicMessage(message) {
       if (!voiceChannel?.isVoiceBased()) return;
 
       await distube.play(voiceChannel, argument, {
-        textChannel: message.channel,
-        member: message.member
+        textChannel: message.channel
       });
       return;
     }

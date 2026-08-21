@@ -55,9 +55,11 @@ const ffmpegPath = require('ffmpeg-static');
 
 const QURAN_VOICE_CHANNEL_ID = process.env.QURAN_VOICE_CHANNEL_ID || '1537366844149727313';
 const QURAN_STREAM_URL = process.env.QURAN_STREAM_URL || 'https://qurango.net/radio/mix';
+const HOLY_DAYS_CHANNEL_ID = process.env.HOLY_DAYS_CHANNEL_ID?.trim();
 console.log(`Quran configuration loaded: channel=${QURAN_VOICE_CHANNEL_ID}, streamConfigured=${Boolean(process.env.QURAN_STREAM_URL)}`);
 let currentInterval = 2 * 60 * 1000;
 let automaticAzkarInterval;
+let holyDaysInterval;
 let quranConnection;
 let quranPlayer;
 let quranProcess;
@@ -68,6 +70,34 @@ const azkar = JSON.parse(fs.readFileSync(path.join(__dirname, 'azkar.json'), 'ut
 const azkarCategories = ['morning', 'evening', 'random'];
 const allAzkar = azkarCategories.flatMap((category) => azkar[category] || []);
 const configPath = path.join(__dirname, 'config.json');
+
+const holyDaysContent = [
+  {
+    title: 'يوم الجمعة',
+    text: 'أكثروا من الصلاة على النبي ﷺ، واقرؤوا سورة الكهف، وتحَرّوا ساعة الإجابة.',
+    image: 'https://images.unsplash.com/photo-1564121211835-e88c852648ab?auto=format&fit=crop&w=2000&q=90'
+  },
+  {
+    title: 'الأيام البيض',
+    text: 'تذكير بصيام الثالث عشر والرابع عشر والخامس عشر من كل شهر هجري.',
+    image: 'https://images.unsplash.com/photo-1539650116574-75c0c6d73f6e?auto=format&fit=crop&w=2000&q=90'
+  },
+  {
+    title: 'الإثنين والخميس',
+    text: 'من السنن صيام يومي الإثنين والخميس، فاغتنم مواسم الطاعة.',
+    image: 'https://images.unsplash.com/photo-1519817650390-64a93db51149?auto=format&fit=crop&w=2000&q=90'
+  },
+  {
+    title: 'فضل الذكر',
+    text: 'اجعل لسانك رطبًا بذكر الله، فالقليل الدائم خير من الكثير المنقطع.',
+    image: 'https://images.unsplash.com/photo-1609599006353-e629aaabfeae?auto=format&fit=crop&w=2000&q=90'
+  },
+  {
+    title: 'فضائل الأوقات',
+    text: 'اغتنم الأسحار وبعد الصلوات وأوقات الخلوة بالدعاء والاستغفار.',
+    image: 'https://images.unsplash.com/photo-1542816417-0983c9c9ad53?auto=format&fit=crop&w=2000&q=90'
+  }
+];
 
 function loadConfig() {
   try {
@@ -339,11 +369,50 @@ async function sendAutomaticAzkar() {
   }
 }
 
+async function sendHolyDayImage() {
+  if (!HOLY_DAYS_CHANNEL_ID) return;
+
+  try {
+    const channel = await client.channels.fetch(HOLY_DAYS_CHANNEL_ID).catch(() => null);
+    if (!channel?.isTextBased()) {
+      console.error(`Holy days channel is unavailable: ${HOLY_DAYS_CHANNEL_ID}`);
+      return;
+    }
+
+    const content = holyDaysContent[Math.floor(Math.random() * holyDaysContent.length)];
+    const embed = new EmbedBuilder()
+      .setColor(getRainbowColor())
+      .setTitle(`✦ ${content.title} ✦`)
+      .setDescription(content.text)
+      .setImage(content.image)
+      .setFooter({ text: 'JONT / Athkar • تذكير بالخير والطاعة' })
+      .setTimestamp();
+
+    await channel.send({ embeds: [embed] });
+    console.log(`Holy days image sent to channel ${HOLY_DAYS_CHANNEL_ID}.`);
+  } catch (error) {
+    console.error('Could not send holy days image:', error);
+  }
+}
+
+function startHolyDaysSchedule() {
+  if (!HOLY_DAYS_CHANNEL_ID) {
+    console.log('HOLY_DAYS_CHANNEL_ID is not configured; holy days schedule is disabled.');
+    return;
+  }
+
+  sendHolyDayImage().catch((error) => console.error('Initial holy days image failed:', error));
+  holyDaysInterval = setInterval(() => {
+    sendHolyDayImage().catch((error) => console.error('Scheduled holy days image failed:', error));
+  }, 60 * 60 * 1000);
+}
+
 client.once('clientReady', (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
   readyClient.user.setActivity('JONT / Athkar', { type: 3 });
   resetAutomaticAzkarInterval();
   connectQuranVoice().catch((error) => console.error('Could not start Quran voice stream:', error));
+  startHolyDaysSchedule();
 });
 
 client.on('interactionCreate', async (interaction) => {

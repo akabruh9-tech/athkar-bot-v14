@@ -190,9 +190,6 @@ function startQuranStream() {
   const streamProcess = spawn(ffmpegPath, [
     '-hide_banner',
     '-loglevel', 'error',
-    '-reconnect', '1',
-    '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '5',
     '-i', 'pipe:0',
     '-vn',
     '-ac', '2',

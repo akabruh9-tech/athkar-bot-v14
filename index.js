@@ -207,7 +207,7 @@ async function sendMusicEmbed(queue, embed) {
 }
 
 async function handleMusicMessage(message) {
-  if (message.channel.id !== CHANNEL_ID || !message.guild || message.author.bot) return;
+  if (!message.guild || message.author.bot) return;
 
   const [command, ...argumentParts] = message.content.trim().split(/\s+/);
   const normalizedCommand = command?.toLowerCase();
@@ -228,7 +228,8 @@ async function handleMusicMessage(message) {
       if (!voiceChannel?.isVoiceBased()) return;
 
       await distube.play(voiceChannel, argument, {
-        textChannel: message.channel
+        textChannel: message.channel,
+        member: message.member
       });
       return;
     }
@@ -308,16 +309,18 @@ distube.on('playSong', async (queue, song) => {
   const nextSong = queue.songs[1];
   const songLink = song.url ? `[فتح الرابط](${song.url})` : 'رابط غير متوفر';
   const nextTitle = nextSong ? `**${nextSong.name}**` : 'لا يوجد مقطع تالٍ حاليًا';
+  const requester = song.user?.tag || song.user?.username || 'غير معروف';
   const thumbnail = song.thumbnail || null;
   const musicEmbed = new EmbedBuilder()
     .setColor(0x2ecc71)
-    .setTitle('✦ JONT Music • تشغيل الآن ✦')
+    .setTitle('▶ JONT Music • تشغيل الآن')
     .setDescription(`**${song.name}**\n${songLink}`)
     .addFields(
       { name: 'المدة', value: `**${song.formattedDuration || formatDuration(song.duration)}**`, inline: true },
+      { name: 'طلب بواسطة', value: `**${requester}**`, inline: true },
       { name: 'المقطع التالي', value: nextTitle, inline: true }
     )
-    .setFooter({ text: 'JONT Music • التشغيل المباشر' })
+    .setFooter({ text: 'JONT Music • التشغيل المباشر • 24/7' })
     .setTimestamp();
   if (thumbnail) musicEmbed.setThumbnail(thumbnail);
 
@@ -339,7 +342,7 @@ client.once('clientReady', (readyClient) => {
 });
 
 client.on('messageCreate', (message) => {
-  if (message.channel.id !== CHANNEL_ID) return;
+  if (message.channel.id !== "1540170401777455176") return;
   handleMusicMessage(message);
 });
 

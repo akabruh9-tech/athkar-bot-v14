@@ -26,7 +26,7 @@ const {
   SlashCommandBuilder
 } = require('discord.js');
 
-const INTERVAL_MS = 1200000;
+const INTERVAL_MS = 2 * 60 * 1000;
 const discordToken = process.env.DISCORD_TOKEN?.trim();
 const clientId = process.env.CLIENT_ID?.trim();
 const azkar = JSON.parse(fs.readFileSync(path.join(__dirname, 'azkar.json'), 'utf8'));

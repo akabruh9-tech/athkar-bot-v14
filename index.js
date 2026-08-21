@@ -292,6 +292,14 @@ function isDirectUrl(query) {
   }
 }
 
+function cleanMusicInput(input) {
+  return String(input || '')
+    .replace(/[<>]/g, '')
+    .replace(/^(["'`])+|(["'`])+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 async function resolveSoundCloudQuery(query) {
   if (isDirectUrl(query)) return query;
 
@@ -308,7 +316,7 @@ async function handleMusicMessage(message) {
   if (!content) return;
   const args = content.split(/ +/);
   const cmd = args[0].toLowerCase();
-  const query = args.slice(1).join(' ').trim();
+  const query = cleanMusicInput(args.slice(1).join(' '));
   const musicCommands = ['p', 'play', '-play', 'ش', 'شغل', 's', 'skip', 'stop', 'pause', 'seek', 'س', 'وقف', 'ايقاف', 'قدم', 'ق'];
   if (!musicCommands.includes(cmd)) return;
 
@@ -405,8 +413,9 @@ async function handleMusicMessage(message) {
     }
   } catch (error) {
     console.error('Music command failed:', error);
+    const errorMessage = error?.message || 'حدث خطأ غير معروف.';
     await message.reply({
-      embeds: [buildMusicEmbed('تعذر التشغيل', `تعذر العثور على مصدر SoundCloud صالح.\n${error.message}`, 0xe74c3c)]
+      embeds: [buildMusicEmbed('تعذر تنفيذ الأمر', `${errorMessage}\nتحقق من اسم المقطع أو الرابط ثم حاول مرة أخرى.`, 0xe74c3c)]
     }).catch(() => null);
   }
 }
@@ -442,7 +451,6 @@ client.once('clientReady', (readyClient) => {
 });
 
 client.on('messageCreate', (message) => {
-  if (message.channel.id !== "1540170401777455176") return;
   handleMusicMessage(message);
 });
 

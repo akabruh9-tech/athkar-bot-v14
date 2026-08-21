@@ -143,7 +143,7 @@ function buildAzkarEmbed(zikr, category) {
 
   return new EmbedBuilder()
     .setColor(getRainbowColor())
-    .setTitle('✦ JONT / Athkar ✦')
+    .setTitle('✦ OSCORP | Athkar ✦')
     .addFields(
       { name: '❖ الذكر', value: trimField(`**${zikr.text}**`) },
       { name: '❖ التصنيف', value: displayCategory, inline: true },

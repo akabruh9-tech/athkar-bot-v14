@@ -43,7 +43,6 @@ try {
 }
 
 const soundcloudPlugin = new SoundCloudPlugin();
-const youtubePlugin = new YouTubePlugin({ cookies: parsedCookies });
 
 const CHANNEL_ID = "1540170401777455176";
 const PURPLE = 0x9b59b6;
@@ -149,6 +148,8 @@ const client = new Client({
 });
 
 const distube = new DisTube(client, {
+  emitNewSongOnly: true,
+  nsfw: true,
   ffmpeg: { path: ffmpegPath },
   customFilters: {
     clarity: 'highpass=f=80,lowpass=f=16000',
@@ -159,7 +160,19 @@ const distube = new DisTube(client, {
     soft: 'lowpass=f=12000,acompressor=threshold=-24dB:ratio=1.5',
     treblebass: 'equalizer=f=100:t=q:w=1:g=5,equalizer=f=8000:t=q:w=1:g=4'
   },
-  plugins: [youtubePlugin, soundcloudPlugin]
+  plugins: [
+    new YouTubePlugin({
+      cookies: parsedCookies,
+      ytdlOptions: {
+        highWaterMark: 1 << 24,
+        filter: 'audioonly',
+        liveBuffer: 40000,
+        dlChunkSize: 0,
+        quality: 'lowestaudio'
+      }
+    }),
+    soundcloudPlugin
+  ]
 });
 
 async function registerCommands() {
@@ -306,6 +319,30 @@ async function resolveMusicQuery(query) {
   return query;
 }
 
+function isRateLimitError(error) {
+  const errorText = [error?.message, error?.code, error?.status].filter(Boolean).join(' ').toLowerCase();
+  return errorText.includes('429') || errorText.includes('rate limit') || errorText.includes('too many requests');
+}
+
+async function playWithSoundCloudFallback(voiceChannel, query, playOptions) {
+  try {
+    await distube.play(voiceChannel, query, playOptions);
+  } catch (error) {
+    console.error('Primary music source failed:', error);
+    if (!isRateLimitError(error)) throw error;
+
+    const results = await soundcloudPlugin.search(query, 'track', 1);
+    const fallbackUrl = results[0]?.url;
+    if (!fallbackUrl) throw new Error(`No SoundCloud fallback found for: ${query}`);
+
+    console.warn(`Rate limit detected. Retrying with SoundCloud: ${fallbackUrl}`);
+    await distube.play(voiceChannel, fallbackUrl, {
+      ...playOptions,
+      message: undefined
+    });
+  }
+}
+
 async function handleMusicMessage(message) {
   if (!message.guild || message.author.bot) return;
 
@@ -333,7 +370,7 @@ async function handleMusicMessage(message) {
       const voiceChannel = message.member.voice.channel;
 
       const musicSource = await resolveMusicQuery(query);
-      await distube.play(voiceChannel, musicSource, {
+      await playWithSoundCloudFallback(voiceChannel, musicSource, {
         textChannel: message.channel,
         member: message.member,
         message,

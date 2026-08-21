@@ -27,8 +27,8 @@ const {
   SlashCommandBuilder
 } = require('discord.js');
 const { DisTube } = require('distube');
-const { YouTubePlugin } = require('@distube/youtube');
-const { YtDlpPlugin } = require('@distube/yt-dlp');
+const { SoundCloudPlugin } = require('@distube/soundcloud');
+const soundcloudPlugin = new SoundCloudPlugin();
 
 const VOICE_CHANNEL_ID = '1537366844149727313';
 
@@ -137,7 +137,7 @@ const client = new Client({
 
 const distube = new DisTube(client, {
   ffmpeg: { path: ffmpegPath },
-  plugins: [new YouTubePlugin(), new YtDlpPlugin({ update: true })]
+  plugins: [soundcloudPlugin]
 });
 
 async function registerCommands() {
@@ -205,6 +205,39 @@ async function sendMusicEmbed(queue, embed) {
   });
 }
 
+function isDirectUrl(query) {
+  try {
+    new URL(query);
+    return /^https?:\/\//i.test(query);
+  } catch {
+    return false;
+  }
+}
+
+function isSoundCloudUrl(query) {
+  try {
+    const hostname = new URL(query).hostname.toLowerCase();
+    return hostname === 'soundcloud.com' || hostname.endsWith('.soundcloud.com');
+  } catch {
+    return false;
+  }
+}
+
+async function resolveSoundCloudQuery(query) {
+  if (isDirectUrl(query)) {
+    if (!isSoundCloudUrl(query)) {
+      throw new Error('Only SoundCloud URLs and SoundCloud searches are supported.');
+    }
+    return query;
+  }
+
+  const results = await soundcloudPlugin.search(query, 'track', 1);
+  if (!results.length || !results[0]?.url) {
+    throw new Error(`No SoundCloud result found for: ${query}`);
+  }
+  return results[0].url;
+}
+
 async function handleMusicMessage(message) {
   if (!message.guild || message.author.bot) return;
 
@@ -231,9 +264,12 @@ async function handleMusicMessage(message) {
         return;
       }
 
-      await distube.play(voiceChannel, argument, {
+      const soundCloudSource = await resolveSoundCloudQuery(argument);
+      await distube.play(voiceChannel, soundCloudSource, {
         textChannel: message.channel,
-        member: message.member
+        member: message.member,
+        message,
+        skip: false
       });
       return;
     }
@@ -302,9 +338,9 @@ async function handleMusicMessage(message) {
       });
     }
   } catch (error) {
-    console.error('Music command failed:', error.message);
+    console.error('Music command failed:', error);
     await message.reply({
-      embeds: [buildMusicEmbed('تعذر التشغيل', 'حدث خطأ عابر أثناء تنفيذ أمر الموسيقى.', 0xe74c3c)]
+      embeds: [buildMusicEmbed('تعذر التشغيل', `تعذر العثور على مصدر SoundCloud صالح.\n${error.message}`, 0xe74c3c)]
     }).catch(() => null);
   }
 }

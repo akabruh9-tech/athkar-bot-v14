@@ -185,19 +185,19 @@ async function handleMusicMessage(message) {
   const [command, ...argumentParts] = message.content.trim().split(/\s+/);
   const normalizedCommand = command?.toLowerCase();
   const argument = argumentParts.join(' ').trim();
-  const musicCommands = ['p', 'play', 's', 'skip', 'stop', 'pause', 'seek', 'س', 'وقف', 'ايقاف', 'قدم', 'ق'];
+  const musicCommands = ['p', 'play', 'ش', 'شغل', 's', 'skip', 'stop', 'pause', 'seek', 'س', 'وقف', 'ايقاف', 'قدم', 'ق'];
   if (!musicCommands.includes(normalizedCommand) && !musicCommands.includes(command)) return;
 
   try {
-    if (normalizedCommand === 'p' || normalizedCommand === 'play') {
+    if (['p', 'play', 'ش', 'شغل'].includes(normalizedCommand) || ['ش', 'شغل'].includes(command)) {
       if (!argument) {
         await message.reply('استخدم `p <اسم الأغنية أو الرابط>`.');
         return;
       }
 
-      const voiceChannel = await client.channels.fetch(VOICE_CHANNEL_ID).catch(() => null);
-      if (!voiceChannel?.isVoiceBased() || voiceChannel.guildId !== message.guildId) {
-        await message.reply('قناة الموسيقى المحددة غير متاحة لهذا السيرفر.');
+      const voiceChannel = message.member?.voice?.channel;
+      if (!voiceChannel?.isVoiceBased()) {
+        await message.reply('يجب أن تكون داخل روم صوتي لتشغيل الموسيقى.');
         return;
       }
 

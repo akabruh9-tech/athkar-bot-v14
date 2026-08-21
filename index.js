@@ -138,8 +138,6 @@ const client = new Client({
 
 const distube = new DisTube(client, {
   ffmpeg: { path: ffmpegPath },
-  leaveOnEmpty: false,
-  leaveOnFinish: false,
   customFilters: {
     clarity: 'highpass=f=80,lowpass=f=16000',
     smooth: 'acompressor=threshold=-18dB:ratio=2:attack=20:release=250',

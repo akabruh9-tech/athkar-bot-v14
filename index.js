@@ -26,7 +26,8 @@ const {
   SlashCommandBuilder
 } = require('discord.js');
 
-const INTERVAL_MS = 2 * 60 * 1000;
+let currentInterval = 2 * 60 * 1000;
+let automaticAzkarInterval;
 const discordToken = process.env.DISCORD_TOKEN?.trim();
 const clientId = process.env.CLIENT_ID?.trim();
 const azkar = JSON.parse(fs.readFileSync(path.join(__dirname, 'azkar.json'), 'utf8'));
@@ -104,6 +105,18 @@ const commands = [
         .setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .setDMPermission(false),
+  new SlashCommandBuilder()
+    .setName('setime')
+    .setDescription('يغير وقت إرسال الأذكار التلقائي بالدقائق')
+    .addIntegerOption((option) =>
+      option
+        .setName('minutes')
+        .setDescription('عدد الدقائق بين كل إرسال')
+        .setMinValue(1)
+        .setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setDMPermission(false)
 ].map((command) => command.toJSON());
 
@@ -112,6 +125,11 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(discordToken);
   await rest.put(Routes.applicationCommands(clientId), { body: commands });
+}
+
+function resetAutomaticAzkarInterval() {
+  if (automaticAzkarInterval) clearInterval(automaticAzkarInterval);
+  automaticAzkarInterval = setInterval(sendAutomaticAzkar, currentInterval);
 }
 
 async function sendAutomaticAzkar() {
@@ -130,7 +148,7 @@ async function sendAutomaticAzkar() {
 client.once('clientReady', (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
   client.user.setActivity('JONT / Athkar', { type: 3 });
-  setInterval(sendAutomaticAzkar, INTERVAL_MS);
+  resetAutomaticAzkarInterval();
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -166,6 +184,25 @@ client.on('interactionCreate', async (interaction) => {
             .setDescription(`تم تحديد ${channel} لإرسال ذكر عشوائي كل 20 دقيقة.`)
             .setFooter({ text: 'JONT / Athkar • إعدادات الإرسال التلقائي' })
         ]
+      });
+    }
+
+    if (interaction.commandName === 'setime') {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+        await interaction.reply({
+          content: 'ليس لديك صلاحية Administrator لاستخدام هذا الأمر.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+
+      const minutes = interaction.options.getInteger('minutes', true);
+      currentInterval = minutes * 60 * 1000;
+      resetAutomaticAzkarInterval();
+
+      await interaction.reply({
+        content: `تم تغيير وقت إرسال الأذكار إلى كل ${minutes} دقيقة.`,
+        flags: MessageFlags.Ephemeral
       });
     }
   } catch (error) {

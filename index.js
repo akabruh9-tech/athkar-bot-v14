@@ -20,11 +20,15 @@ const {
   Client,
   EmbedBuilder,
   GatewayIntentBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
   PermissionFlagsBits,
   REST,
   Routes,
-  SlashCommandBuilder
+  SlashCommandBuilder,
+  StringSelectMenuBuilder
 } = require('discord.js');
 const { DisTube } = require('distube');
 const { YtDlpPlugin } = require('@distube/yt-dlp');
@@ -138,6 +142,9 @@ const distube = new DisTube(client, {
   ffmpeg: { path: ffmpegPath },
   leaveOnEmpty: false,
   leaveOnFinish: false,
+  customFilters: {
+    clarity: 'highpass=f=80,lowpass=f=16000'
+  },
   plugins: [new YtDlpPlugin()]
 });
 
@@ -199,9 +206,70 @@ function buildMusicEmbed(title, description, color = 0x2ecc71) {
     .setTimestamp();
 }
 
-async function sendMusicEmbed(queue, embed) {
+function buildMusicControls(queue) {
+  const pauseButton = new ButtonBuilder()
+    .setCustomId(`music:pause:${queue.guild.id}`)
+    .setLabel(queue.paused ? 'تشغيل' : 'إيقاف مؤقت')
+    .setEmoji(queue.paused ? '▶️' : '⏸️')
+    .setStyle(ButtonStyle.Primary);
+  const loopButton = new ButtonBuilder()
+    .setCustomId(`music:loop:${queue.guild.id}`)
+    .setLabel(`تكرار: ${queue.repeatMode === 0 ? 'متوقف' : queue.repeatMode === 1 ? 'الأغنية' : 'القائمة'}`)
+    .setEmoji('🔁')
+    .setStyle(queue.repeatMode === 0 ? ButtonStyle.Secondary : ButtonStyle.Success);
+  const filterMenu = new StringSelectMenuBuilder()
+    .setCustomId(`music:filter:${queue.guild.id}`)
+    .setPlaceholder('🎛️ Select a filter')
+    .addOptions(
+      { label: 'بدون فلتر', value: 'off', emoji: '🎵' },
+      { label: 'Clarity / وضوح', value: 'clarity', emoji: '✨' },
+      { label: 'BassBoost', value: 'bassboost', emoji: '🔊' },
+      { label: '8D Audio', value: '3d', emoji: '🌀' },
+      { label: 'Karaoke', value: 'karaoke', emoji: '🎤' },
+      { label: 'Nightcore', value: 'nightcore', emoji: '⚡' },
+      { label: 'Echo', value: 'echo', emoji: '🗣️' }
+    );
+
+  return [
+    new ActionRowBuilder().addComponents(
+      pauseButton,
+      new ButtonBuilder()
+        .setCustomId(`music:skip:${queue.guild.id}`)
+        .setLabel('تخطي')
+        .setEmoji('⏭️')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`music:stop:${queue.guild.id}`)
+        .setLabel('إيقاف')
+        .setEmoji('⏹️')
+        .setStyle(ButtonStyle.Danger),
+      loopButton
+    ),
+    new ActionRowBuilder().addComponents(filterMenu)
+  ];
+}
+
+function buildNowPlayingEmbed(queue, song, title = '▶ JONT Music • تشغيل الآن') {
+  const songLink = song.url ? `[فتح الرابط](${song.url})` : 'رابط غير متوفر';
+  const requester = song.user?.tag || song.user?.username || 'غير معروف';
+  const embed = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setTitle(title)
+    .setDescription(`**${song.name}**\n${songLink}`)
+    .addFields(
+      { name: 'المدة', value: `**${song.formattedDuration || formatDuration(song.duration)}**`, inline: true },
+      { name: 'طلب بواسطة', value: `**${requester}**`, inline: true },
+      { name: 'المقطع التالي', value: queue.songs[1] ? `**${queue.songs[1].name}**` : 'لا يوجد مقطع تالٍ حاليًا', inline: true }
+    )
+    .setFooter({ text: 'JONT Music • التشغيل المباشر • 24/7' })
+    .setTimestamp();
+  if (song.thumbnail) embed.setThumbnail(song.thumbnail);
+  return embed;
+}
+
+async function sendMusicEmbed(queue, embed, components = []) {
   if (!queue?.textChannel?.isTextBased()) return;
-  await queue.textChannel.send({ embeds: [embed] }).catch((error) => {
+  await queue.textChannel.send({ embeds: [embed], components }).catch((error) => {
     console.error('Could not send music embed:', error.message);
   });
 }
@@ -306,27 +374,10 @@ async function handleMusicMessage(message) {
 }
 
 distube.on('playSong', async (queue, song) => {
-  const nextSong = queue.songs[1];
-  const songLink = song.url ? `[فتح الرابط](${song.url})` : 'رابط غير متوفر';
-  const nextTitle = nextSong ? `**${nextSong.name}**` : 'لا يوجد مقطع تالٍ حاليًا';
-  const requester = song.user?.tag || song.user?.username || 'غير معروف';
-  const thumbnail = song.thumbnail || null;
-  const musicEmbed = new EmbedBuilder()
-    .setColor(0x2ecc71)
-    .setTitle('▶ JONT Music • تشغيل الآن')
-    .setDescription(`**${song.name}**\n${songLink}`)
-    .addFields(
-      { name: 'المدة', value: `**${song.formattedDuration || formatDuration(song.duration)}**`, inline: true },
-      { name: 'طلب بواسطة', value: `**${requester}**`, inline: true },
-      { name: 'المقطع التالي', value: nextTitle, inline: true }
-    )
-    .setFooter({ text: 'JONT Music • التشغيل المباشر • 24/7' })
-    .setTimestamp();
-  if (thumbnail) musicEmbed.setThumbnail(thumbnail);
-
   await sendMusicEmbed(
     queue,
-    musicEmbed
+    buildNowPlayingEmbed(queue, song),
+    buildMusicControls(queue)
   );
 });
 
@@ -352,6 +403,54 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
+  if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.channelId !== CHANNEL_ID) return;
+
+  if (interaction.isButton() || interaction.isStringSelectMenu()) {
+    const [scope, action, guildId] = interaction.customId.split(':');
+    if (scope !== 'music' || guildId !== interaction.guildId) return;
+
+    const queue = distube.getQueue(guildId);
+    if (!queue) {
+      await interaction.reply({ content: 'لا توجد أغنية قيد التشغيل حالياً.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    try {
+      if (interaction.isButton() && action === 'pause') {
+        if (queue.paused) await queue.resume();
+        else await queue.pause();
+      } else if (interaction.isButton() && action === 'skip') {
+        await queue.skip();
+      } else if (interaction.isButton() && action === 'stop') {
+        await queue.stop();
+        await interaction.update({
+          embeds: [buildMusicEmbed('تم الإيقاف', 'توقفت الموسيقى. يمكنك استخدام `p` أو `play` لتشغيل مقطع جديد.', 0xe74c3c)],
+          components: []
+        });
+        return;
+      } else if (interaction.isButton() && action === 'loop') {
+        queue.setRepeatMode((queue.repeatMode + 1) % 3);
+      } else if (interaction.isStringSelectMenu() && action === 'filter') {
+        const filter = interaction.values[0];
+        if (filter === 'off') queue.filters.clear();
+        else queue.filters.set([filter]);
+      } else {
+        return;
+      }
+
+      await interaction.update({
+        embeds: [buildNowPlayingEmbed(queue, queue.songs[0], '▶ JONT Music • تم تحديث التشغيل')],
+        components: buildMusicControls(queue)
+      });
+    } catch (error) {
+      console.error('Music control interaction failed:', error.message);
+      const response = { content: 'تعذر تطبيق التغيير على التشغيل الحالي.', flags: MessageFlags.Ephemeral };
+      if (interaction.replied || interaction.deferred) await interaction.followUp(response).catch(() => null);
+      else await interaction.reply(response).catch(() => null);
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   try {

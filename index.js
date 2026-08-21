@@ -30,7 +30,7 @@ const { DisTube } = require('distube');
 const { YouTubePlugin } = require('@distube/youtube');
 const { YtDlpPlugin } = require('@distube/yt-dlp');
 
-const VOICE_CHANNEL_ID = '1537366844149727313';
+const CHANNEL_ID = "1540170401777455176";
 
 let currentInterval = 2 * 60 * 1000;
 let automaticAzkarInterval;
@@ -137,6 +137,8 @@ const client = new Client({
 
 const distube = new DisTube(client, {
   ffmpeg: { path: ffmpegPath },
+  leaveOnEmpty: false,
+  leaveOnFinish: false,
   plugins: [new YouTubePlugin(), new YtDlpPlugin({ update: true })]
 });
 
@@ -167,9 +169,9 @@ async function sendAutomaticAzkar() {
 
 async function joinMusicVoiceChannel() {
   try {
-    const channel = await client.channels.fetch(VOICE_CHANNEL_ID);
+    const channel = await client.channels.fetch(CHANNEL_ID);
     if (!channel?.isVoiceBased()) {
-      console.error(`Configured voice channel is not voice-based: ${VOICE_CHANNEL_ID}`);
+      console.error(`Configured music channel is not voice-based: ${CHANNEL_ID}`);
       return;
     }
 
@@ -206,7 +208,7 @@ async function sendMusicEmbed(queue, embed) {
 }
 
 async function handleMusicMessage(message) {
-  if (!message.guild || message.author.bot) return;
+  if (message.channel.id !== CHANNEL_ID || !message.guild || message.author.bot) return;
 
   const [command, ...argumentParts] = message.content.trim().split(/\s+/);
   const normalizedCommand = command?.toLowerCase();
@@ -223,13 +225,8 @@ async function handleMusicMessage(message) {
         return;
       }
 
-      const voiceChannel = message.member?.voice?.channel;
-      if (!voiceChannel?.isVoiceBased()) {
-        await message.reply({
-          embeds: [buildMusicEmbed('الروم الصوتي مطلوب', 'انضم إلى روم صوتي ثم أرسل أمر التشغيل مرة أخرى.', 0xe67e22)]
-        });
-        return;
-      }
+      const voiceChannel = await client.channels.fetch(CHANNEL_ID).catch(() => null);
+      if (!voiceChannel?.isVoiceBased()) return;
 
       await distube.play(voiceChannel, argument, {
         textChannel: message.channel,
@@ -343,10 +340,13 @@ client.once('clientReady', (readyClient) => {
   joinMusicVoiceChannel();
 });
 
-client.on('messageCreate', handleMusicMessage);
+client.on('messageCreate', (message) => {
+  if (message.channel.id !== CHANNEL_ID) return;
+  handleMusicMessage(message);
+});
 
 client.on('voiceStateUpdate', (oldState, newState) => {
-  if (oldState.id !== client.user?.id || newState.channelId === VOICE_CHANNEL_ID) return;
+  if (oldState.id !== client.user?.id || newState.channelId === CHANNEL_ID) return;
   joinMusicVoiceChannel();
 });
 

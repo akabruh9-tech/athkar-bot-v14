@@ -42,6 +42,7 @@ const ffmpegPath = require('ffmpeg-static');
 
 const QURAN_VOICE_CHANNEL_ID = process.env.QURAN_VOICE_CHANNEL_ID || '1537366844149727313';
 const QURAN_STREAM_URL = process.env.QURAN_STREAM_URL || 'https://qurango.net/radio/mix';
+console.log(`Quran configuration loaded: channel=${QURAN_VOICE_CHANNEL_ID}, streamConfigured=${Boolean(process.env.QURAN_STREAM_URL)}`);
 let currentInterval = 2 * 60 * 1000;
 let automaticAzkarInterval;
 let quranConnection;
@@ -186,7 +187,7 @@ function startQuranStream() {
   if (!quranPlayer || !quranConnection) return Promise.resolve();
 
   stopQuranProcess();
-  quranProcess = spawn(ffmpegPath, [
+  const streamProcess = spawn(ffmpegPath, [
     '-hide_banner',
     '-loglevel', 'error',
     '-reconnect', '1',
@@ -201,21 +202,27 @@ function startQuranStream() {
     '-f', 'ogg',
     'pipe:1'
   ], { stdio: ['pipe', 'pipe', 'pipe'] });
+  quranProcess = streamProcess;
+  console.log(`Starting Quran audio stream from ${new URL(QURAN_STREAM_URL).hostname}`);
 
-  pipeQuranSource(QURAN_STREAM_URL, quranProcess).catch((error) => {
+  pipeQuranSource(QURAN_STREAM_URL, streamProcess).catch((error) => {
     console.error('Could not read Quran stream:', error);
-    quranProcess.kill('SIGTERM');
+    if (!streamProcess.killed) streamProcess.kill('SIGTERM');
   });
 
-  quranProcess.stderr.on('data', (data) => {
+  streamProcess.stderr.on('data', (data) => {
     console.error('Quran FFmpeg:', data.toString().trim());
   });
-  quranProcess.once('error', (error) => scheduleQuranRestart(`FFmpeg error: ${error.message}`));
-  quranProcess.once('close', (code) => {
-    if (quranProcess) scheduleQuranRestart(`FFmpeg exited with code ${code}`);
+  streamProcess.once('error', (error) => scheduleQuranRestart(`FFmpeg error: ${error.message}`));
+  streamProcess.once('close', (code) => {
+    if (quranProcess === streamProcess) {
+      quranProcess = null;
+      scheduleQuranRestart(`FFmpeg exited with code ${code}`);
+    }
   });
 
-  quranPlayer.play(createAudioResource(quranProcess.stdout, { inputType: StreamType.OggOpus }));
+  quranPlayer.play(createAudioResource(streamProcess.stdout, { inputType: StreamType.OggOpus }));
+  console.log('Quran audio player started.');
   return Promise.resolve();
 }
 
@@ -224,9 +231,11 @@ function pipeQuranSource(url, process, redirects = 0) {
 
   return new Promise((resolve, reject) => {
     const transport = url.startsWith('https:') ? https : http;
+    console.log(`Connecting to Quran stream${redirects ? ` after redirect ${redirects}` : ''}...`);
     const request = transport.get(url, {
       headers: { 'User-Agent': 'JONT-Athkar-Quran-Radio/1.0' }
     }, (response) => {
+      console.log(`Quran stream response: HTTP ${response.statusCode}`);
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         response.resume();
         pipeQuranSource(new URL(response.headers.location, url).toString(), process, redirects + 1)
@@ -252,7 +261,9 @@ function pipeQuranSource(url, process, redirects = 0) {
 
 async function connectQuranVoice() {
   try {
+    console.log(`Attempting to connect to Quran voice channel ${QURAN_VOICE_CHANNEL_ID}...`);
     const channel = await client.channels.fetch(QURAN_VOICE_CHANNEL_ID);
+    console.log(`Quran voice channel fetched: ${channel?.name || 'unknown'}`);
     if (!channel?.isVoiceBased() || !channel.guild) {
       throw new Error(`Quran channel is not a voice channel: ${QURAN_VOICE_CHANNEL_ID}`);
     }
@@ -262,9 +273,14 @@ async function connectQuranVoice() {
     });
     quranPlayer.removeAllListeners(AudioPlayerStatus.Idle);
     quranPlayer.removeAllListeners('error');
+    quranPlayer.removeAllListeners('stateChange');
+    quranPlayer.on('stateChange', (oldState, newState) => {
+      console.log(`Quran audio state: ${oldState.status} -> ${newState.status}`);
+    });
     quranPlayer.on(AudioPlayerStatus.Idle, () => scheduleQuranRestart('audio player idle'));
     quranPlayer.on('error', (error) => scheduleQuranRestart(`audio player error: ${error.message}`));
 
+    console.log('Creating Discord voice connection...');
     quranConnection = joinVoiceChannel({
       channelId: channel.id,
       guildId: channel.guild.id,
@@ -272,11 +288,15 @@ async function connectQuranVoice() {
       selfDeaf: false
     });
     quranConnection.subscribe(quranPlayer);
+    console.log('Voice connection created and audio player subscribed.');
     quranConnection.on('error', (error) => scheduleQuranRestart(`voice connection error: ${error.message}`));
     quranConnection.on('stateChange', (_, newState) => {
+      console.log(`Quran voice connection state: ${newState.status}`);
       if (newState.status === VoiceConnectionStatus.Disconnected) scheduleQuranRestart('voice connection disconnected');
     });
+    console.log('Waiting for Discord voice connection readiness...');
     await entersState(quranConnection, VoiceConnectionStatus.Ready, 20_000);
+    console.log('Discord voice connection is ready.');
     await startQuranStream();
     console.log(`Quran stream started in ${channel.name}`);
   } catch (error) {

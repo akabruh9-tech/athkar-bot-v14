@@ -31,17 +31,7 @@ const {
   StringSelectMenuBuilder
 } = require('discord.js');
 const { DisTube } = require('distube');
-const { YouTubePlugin } = require('@distube/youtube');
 const { SoundCloudPlugin } = require('@distube/soundcloud');
-let parsedCookies = [];
-try {
-  if (process.env.YOUTUBE_COOKIES) {
-    parsedCookies = JSON.parse(process.env.YOUTUBE_COOKIES);
-  }
-} catch (error) {
-  console.error('Error parsing YOUTUBE_COOKIES:', error);
-}
-
 const soundcloudPlugin = new SoundCloudPlugin();
 
 const CHANNEL_ID = "1540170401777455176";
@@ -160,19 +150,7 @@ const distube = new DisTube(client, {
     soft: 'lowpass=f=12000,acompressor=threshold=-24dB:ratio=1.5',
     treblebass: 'equalizer=f=100:t=q:w=1:g=5,equalizer=f=8000:t=q:w=1:g=4'
   },
-  plugins: [
-    new YouTubePlugin({
-      cookies: parsedCookies,
-      ytdlOptions: {
-        highWaterMark: 1 << 24,
-        filter: 'audioonly',
-        liveBuffer: 40000,
-        dlChunkSize: 0,
-        quality: 'lowestaudio'
-      }
-    }),
-    soundcloudPlugin
-  ]
+  plugins: [soundcloudPlugin]
 });
 
 async function registerCommands() {
@@ -314,33 +292,13 @@ function isDirectUrl(query) {
   }
 }
 
-async function resolveMusicQuery(query) {
+async function resolveSoundCloudQuery(query) {
   if (isDirectUrl(query)) return query;
-  return query;
-}
 
-function isRateLimitError(error) {
-  const errorText = [error?.message, error?.code, error?.status].filter(Boolean).join(' ').toLowerCase();
-  return errorText.includes('429') || errorText.includes('rate limit') || errorText.includes('too many requests');
-}
-
-async function playWithSoundCloudFallback(voiceChannel, query, playOptions) {
-  try {
-    await distube.play(voiceChannel, query, playOptions);
-  } catch (error) {
-    console.error('Primary music source failed:', error);
-    if (!isRateLimitError(error)) throw error;
-
-    const results = await soundcloudPlugin.search(query, 'track', 1);
-    const fallbackUrl = results[0]?.url;
-    if (!fallbackUrl) throw new Error(`No SoundCloud fallback found for: ${query}`);
-
-    console.warn(`Rate limit detected. Retrying with SoundCloud: ${fallbackUrl}`);
-    await distube.play(voiceChannel, fallbackUrl, {
-      ...playOptions,
-      message: undefined
-    });
-  }
+  const results = await soundcloudPlugin.search(query, 'track', 1);
+  const resultUrl = results[0]?.url;
+  if (!resultUrl) throw new Error(`No SoundCloud result found for: ${query}`);
+  return resultUrl;
 }
 
 async function handleMusicMessage(message) {
@@ -369,8 +327,8 @@ async function handleMusicMessage(message) {
       }
       const voiceChannel = message.member.voice.channel;
 
-      const musicSource = await resolveMusicQuery(query);
-      await playWithSoundCloudFallback(voiceChannel, musicSource, {
+      const soundCloudSource = await resolveSoundCloudQuery(query);
+      await distube.play(voiceChannel, soundCloudSource, {
         textChannel: message.channel,
         member: message.member,
         message,

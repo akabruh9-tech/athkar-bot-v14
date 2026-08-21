@@ -26,7 +26,6 @@ const {
   SlashCommandBuilder
 } = require('discord.js');
 
-const PURPLE = 0x9b59b6;
 let currentInterval = 2 * 60 * 1000;
 let automaticAzkarInterval;
 const discordToken = process.env.DISCORD_TOKEN?.trim();
@@ -54,6 +53,30 @@ function getRandomZikr(category = 'random') {
   return entries[Math.floor(Math.random() * entries.length)];
 }
 
+function getRainbowColor() {
+  const hue = (Date.now() / 25) % 360;
+  const saturation = 0.9;
+  const lightness = 0.55;
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const hueSegment = hue / 60;
+  const secondComponent = chroma * (1 - Math.abs((hueSegment % 2) - 1));
+  const match = lightness - chroma / 2;
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  if (hueSegment < 1) [red, green, blue] = [chroma, secondComponent, 0];
+  else if (hueSegment < 2) [red, green, blue] = [secondComponent, chroma, 0];
+  else if (hueSegment < 3) [red, green, blue] = [0, chroma, secondComponent];
+  else if (hueSegment < 4) [red, green, blue] = [0, secondComponent, chroma];
+  else if (hueSegment < 5) [red, green, blue] = [secondComponent, 0, chroma];
+  else [red, green, blue] = [chroma, 0, secondComponent];
+
+  return (Math.round((red + match) * 255) << 16)
+    | (Math.round((green + match) * 255) << 8)
+    | Math.round((blue + match) * 255);
+}
+
 function buildAzkarEmbed(zikr, category) {
   const categoryNames = {
     morning: 'أذكار الصباح',
@@ -64,7 +87,7 @@ function buildAzkarEmbed(zikr, category) {
   const trimField = (value, limit = 1024) => String(value || 'غير متوفر').slice(0, limit);
 
   return new EmbedBuilder()
-    .setColor(PURPLE)
+    .setColor(getRainbowColor())
     .setTitle('✦ JONT / Athkar ✦')
     .addFields(
       { name: '❖ الذكر', value: trimField(`**${zikr.text}**`) },

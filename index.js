@@ -419,7 +419,7 @@ function startHolyDaysSchedule() {
 
 client.once('clientReady', (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
-  readyClient.user.setActivity('JONT / Athkar', { type: 3 });
+  readyClient.user.setActivity('OSCORP | Athkar', { type: 3 });
   resetAutomaticAzkarInterval();
   connectQuranVoice().catch((error) => console.error('Could not start Quran voice stream:', error));
   startHolyDaysSchedule();

@@ -153,7 +153,7 @@ function buildAzkarEmbed(zikr, category) {
         inline: true
       }
     )
-    .setFooter({ text: 'JONT / Athkar • أذكار وأدعية مختارة بعناية' })
+    .setFooter({ text: 'OSCORP | Athkar • أذكار وأدعية مختارة بعناية' })
     .setTimestamp();
 }
 
